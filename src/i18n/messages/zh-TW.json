@@ -2131,7 +2131,11 @@
       "markCompleted": "標記為已完成",
       "reopen": "重新開啟",
       "expandSubsessions": "展開子會話",
-      "collapseSubsessions": "摺疊子會話"
+      "collapseSubsessions": "摺疊子會話",
+      "moveToParent": "移到…",
+      "moveToTopLevel": "移到最上層",
+      "noOtherConversations": "沒有其他會話可作上級",
+      "parentCrumbLabel": "上級："
     },
     "search": {
       "dialogTitle": "搜尋",

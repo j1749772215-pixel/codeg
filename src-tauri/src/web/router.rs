@@ -267,6 +267,14 @@ pub fn build_router(
             post(handlers::conversations::update_conversation_pinned),
         )
         .route(
+            "/set_conversation_parent",
+            post(handlers::conversations::set_conversation_parent),
+        )
+        .route(
+            "/get_conversation_parent",
+            post(handlers::conversations::get_conversation_parent),
+        )
+        .route(
             "/delete_conversation",
             post(handlers::conversations::delete_conversation),
         )

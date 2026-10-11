@@ -2664,6 +2664,54 @@ pub async fn update_conversation_pinned(
     Ok(())
 }
 
+pub async fn set_conversation_parent_core(
+    conn: &sea_orm::DatabaseConnection,
+    conversation_id: i32,
+    parent_id: Option<i32>,
+) -> Result<(), AppCommandError> {
+    conversation_service::set_parent(conn, conversation_id, parent_id)
+        .await
+        .map_err(AppCommandError::from)?;
+    Ok(())
+}
+
+#[cfg(feature = "tauri-runtime")]
+#[cfg_attr(feature = "tauri-runtime", tauri::command)]
+pub async fn set_conversation_parent(
+    app: tauri::AppHandle,
+    db: tauri::State<'_, AppDatabase>,
+    conversation_id: i32,
+    parent_id: Option<i32>,
+) -> Result<(), AppCommandError> {
+    set_conversation_parent_core(&db.conn, conversation_id, parent_id).await?;
+    // Both ends change shape: the moved row leaves its old parent's subtree, and
+    // its new parent gains an expandable child. Re-emit each so every open window
+    // re-reads the sidebar instead of showing a stale tree.
+    emit_conversation_upsert(&EventEmitter::Tauri(app.clone()), &db.conn, conversation_id).await;
+    if let Some(target) = parent_id {
+        emit_conversation_upsert(&EventEmitter::Tauri(app), &db.conn, target).await;
+    }
+    Ok(())
+}
+
+pub async fn get_conversation_parent_core(
+    conn: &sea_orm::DatabaseConnection,
+    conversation_id: i32,
+) -> Result<Option<DbConversationSummary>, AppCommandError> {
+    conversation_service::get_parent(conn, conversation_id)
+        .await
+        .map_err(AppCommandError::from)
+}
+
+#[cfg(feature = "tauri-runtime")]
+#[cfg_attr(feature = "tauri-runtime", tauri::command)]
+pub async fn get_conversation_parent(
+    db: tauri::State<'_, AppDatabase>,
+    conversation_id: i32,
+) -> Result<Option<DbConversationSummary>, AppCommandError> {
+    get_conversation_parent_core(&db.conn, conversation_id).await
+}
+
 pub async fn delete_conversation_core(
     conn: &sea_orm::DatabaseConnection,
     conversation_id: i32,

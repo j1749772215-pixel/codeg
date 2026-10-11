@@ -381,6 +381,48 @@ pub async fn update_conversation_pinned(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SetConversationParentParams {
+    pub conversation_id: i32,
+    /// `null` / omitted moves the conversation back to the top level.
+    #[serde(default)]
+    pub parent_id: Option<i32>,
+}
+
+pub async fn set_conversation_parent(
+    Extension(state): Extension<Arc<AppState>>,
+    Json(params): Json<SetConversationParentParams>,
+) -> Result<Json<()>, AppCommandError> {
+    conv_commands::set_conversation_parent_core(
+        &state.db.conn,
+        params.conversation_id,
+        params.parent_id,
+    )
+    .await?;
+    conv_commands::emit_conversation_upsert(&state.emitter, &state.db.conn, params.conversation_id)
+        .await;
+    if let Some(target) = params.parent_id {
+        conv_commands::emit_conversation_upsert(&state.emitter, &state.db.conn, target).await;
+    }
+    Ok(Json(()))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetConversationParentParams {
+    pub conversation_id: i32,
+}
+
+pub async fn get_conversation_parent(
+    Extension(state): Extension<Arc<AppState>>,
+    Json(params): Json<GetConversationParentParams>,
+) -> Result<Json<Option<DbConversationSummary>>, AppCommandError> {
+    let parent =
+        conv_commands::get_conversation_parent_core(&state.db.conn, params.conversation_id).await?;
+    Ok(Json(parent))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeleteConversationParams {
     pub conversation_id: i32,
 }

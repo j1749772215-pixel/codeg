@@ -2131,7 +2131,11 @@
       "markCompleted": "完了にする",
       "reopen": "再開する",
       "expandSubsessions": "サブ会話を展開",
-      "collapseSubsessions": "サブ会話を折りたたむ"
+      "collapseSubsessions": "サブ会話を折りたたむ",
+      "moveToParent": "別の会話の下へ移動…",
+      "moveToTopLevel": "最上位へ移動",
+      "noOtherConversations": "上位にできる会話がありません",
+      "parentCrumbLabel": "上位: "
     },
     "search": {
       "dialogTitle": "検索",
