@@ -2135,7 +2135,9 @@
       "moveToParent": "Unterordnen…",
       "moveToTopLevel": "Auf oberste Ebene verschieben",
       "noOtherConversations": "Keine andere Konversation zum Unterordnen",
-      "parentCrumbLabel": "Untergeordnet unter: "
+      "parentCrumbLabel": "Untergeordnet unter: ",
+      "newChild": "Unterkonversation erstellen",
+      "newChildNoAgents": "Keine Agenten verfügbar"
     },
     "search": {
       "dialogTitle": "Suchen",

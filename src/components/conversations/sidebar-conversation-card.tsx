@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   Check,
   CornerDownRight,
+  MessageSquarePlus,
   FolderX,
   Info,
   ChevronRight,
@@ -29,7 +30,12 @@ import { useTranslations } from "next-intl"
 import { useImeGuard } from "@/hooks/use-ime-guard"
 import { useTabStore } from "@/contexts/tab-context"
 import { emitAttachSessionToSession } from "@/lib/session-attachment-events"
-import type { DbConversationSummary, ConversationStatus } from "@/lib/types"
+import type {
+  AgentType,
+  DbConversationSummary,
+  ConversationStatus,
+} from "@/lib/types"
+import { getAgentLabel } from "@/lib/custom-agents"
 import { STATUS_ORDER } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { formatConversationTitle } from "@/lib/conversation-title"
@@ -213,6 +219,20 @@ interface SidebarConversationCardProps {
   }[]
   /** Nest this conversation under `parentId`, or un-nest it when null. */
   onMoveToParent?: (id: number, parentId: number | null) => void
+  /**
+   * Agents the "New child conversation" submenu may spawn — the enabled +
+   * available list, shared with the folder header's default-agent submenu.
+   */
+  childAgentTypes?: AgentType[]
+  /**
+   * Create a live child under THIS conversation (`id`, `folderId` supplied so
+   * the caller can open the new tab without re-looking up the parent).
+   */
+  onNewChild?: (
+    parentId: number,
+    parentFolderId: number,
+    agentType: AgentType
+  ) => void
   /** Delegation-tree nesting depth (0 = root). Drives the per-level indent. */
   depth?: number
   /** True when `child_count > 0`: the conversation has delegation children, so
@@ -222,6 +242,20 @@ interface SidebarConversationCardProps {
   expanded?: boolean
   /** Toggle this conversation's sub-session subtree (lazily loads on expand). */
   onToggleExpand?: (id: number) => void
+}
+
+// Id of the row currently being dragged (drag-to-nest); module-level because
+// every card is a separate component instance.
+let draggedConversationId: number | null = null
+
+export function takeDraggedConversationId(): number | null {
+  const id = draggedConversationId
+  draggedConversationId = null
+  return id
+}
+
+export function peekDraggedConversationId(): number | null {
+  return draggedConversationId
 }
 
 export const SidebarConversationCard = memo(function SidebarConversationCard({
@@ -238,6 +272,8 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
   onTogglePin,
   parentCandidates,
   onMoveToParent,
+  childAgentTypes,
+  onNewChild,
   depth = 0,
   hasChildren = false,
   expanded = false,
@@ -254,6 +290,7 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
   const [renameValue, setRenameValue] = useState("")
   const [attachTabId, setAttachTabId] = useState<string | null>(null)
   const [hoverOpen, setHoverOpen] = useState(false)
+  const [dropActive, setDropActive] = useState(false)
   const [newTagOpen, setNewTagOpen] = useState(false)
   // Subscribes to tag DEFINITIONS only (rare), and re-resolves only when this
   // row's own `tag_ids` array changes — a status event elsewhere never lands.
@@ -378,8 +415,55 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
           <ContextMenuTrigger asChild>
             <HoverCardTrigger asChild onFocus={handleHoverTriggerFocus}>
               <div
-                className="relative h-[2rem] bg-sidebar ws-transparent-bg"
+                className={cn(
+                  "relative h-[2rem] bg-sidebar ws-transparent-bg",
+                  dropActive && "rounded-full ring-2 ring-sidebar-primary/60"
+                )}
                 data-conv-key={`${conversation.agent_type}:${conversation.id}`}
+                draggable={!!onMoveToParent}
+                onDragStart={
+                  onMoveToParent
+                    ? (e) => {
+                        draggedConversationId = conversation.id
+                        e.dataTransfer.effectAllowed = "move"
+                        e.dataTransfer.setData(
+                          "text/plain",
+                          String(conversation.id)
+                        )
+                      }
+                    : undefined
+                }
+                onDragEnd={() => {
+                  draggedConversationId = null
+                  setDropActive(false)
+                }}
+                onDragOver={
+                  onMoveToParent
+                    ? (e) => {
+                        if (
+                          draggedConversationId == null ||
+                          draggedConversationId === conversation.id
+                        )
+                          return
+                        e.preventDefault()
+                        e.dataTransfer.dropEffect = "move"
+                        setDropActive(true)
+                      }
+                    : undefined
+                }
+                onDragLeave={() => setDropActive(false)}
+                onDrop={
+                  onMoveToParent
+                    ? (e) => {
+                        const id = draggedConversationId
+                        draggedConversationId = null
+                        setDropActive(false)
+                        if (id == null || id === conversation.id) return
+                        e.preventDefault()
+                        onMoveToParent(id, conversation.id)
+                      }
+                    : undefined
+                }
                 // Per-level indent: shift the shared rail axis right by one step per
                 // depth. Root rows (depth 0) leave the var untouched so they inherit
                 // the list's `--conv-rail-axis: 0.875rem` and render exactly as
@@ -844,9 +928,54 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
                     )}
                   </ContextMenuSubContent>
                 </ContextMenuSub>
-                <ContextMenuSeparator />
               </>
             )}
+            {/* Create a live child under this row. Unlike the draft-tab "new
+                conversation", the row exists immediately so the parent can read
+                it; the agent is picked every time, per the user's request.
+                Rendered wherever `onNewChild` is supplied — the Recent mirror
+                omits it just like it omits "Move to…". NOT gated on
+                `!isSubsession`: a manual child must be able to grow a tree. */}
+            {onNewChild && childAgentTypes && (
+              <ContextMenuSub>
+                <ContextMenuSubTrigger>
+                  <MessageSquarePlus className="h-4 w-4" />
+                  {t("newChild")}
+                </ContextMenuSubTrigger>
+                <ContextMenuSubContent className="max-h-[22rem] min-w-[14rem] overflow-y-auto">
+                  {childAgentTypes.length === 0 ? (
+                    <ContextMenuItem disabled>
+                      <span className="min-w-0 flex-1 truncate text-t-tertiary">
+                        {t("newChildNoAgents")}
+                      </span>
+                    </ContextMenuItem>
+                  ) : (
+                    childAgentTypes.map((agent) => (
+                      <ContextMenuItem
+                        key={agent}
+                        onSelect={() =>
+                          onNewChild(
+                            conversation.id,
+                            conversation.folder_id,
+                            agent
+                          )
+                        }
+                        className="gap-2"
+                      >
+                        <AgentIcon agentType={agent} className="h-4 w-4" />
+                        <span className="min-w-0 flex-1 truncate">
+                          {getAgentLabel(agent)}
+                        </span>
+                      </ContextMenuItem>
+                    ))
+                  )}
+                </ContextMenuSubContent>
+              </ContextMenuSub>
+            )}
+            {(onNewChild && childAgentTypes) ||
+            (onMoveToParent && nestableParents) ? (
+              <ContextMenuSeparator />
+            ) : null}
             <ContextMenuItem
               variant="destructive"
               onSelect={() => setDeleteOpen(true)}

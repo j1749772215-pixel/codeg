@@ -2135,7 +2135,9 @@
       "moveToParent": "다른 대화 아래로 이동…",
       "moveToTopLevel": "최상위로 이동",
       "noOtherConversations": "상위로 지정할 대화가 없습니다",
-      "parentCrumbLabel": "상위: "
+      "parentCrumbLabel": "상위: ",
+      "newChild": "하위 대화 만들기",
+      "newChildNoAgents": "사용 가능한 에이전트가 없습니다"
     },
     "search": {
       "dialogTitle": "검색",

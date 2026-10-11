@@ -2694,6 +2694,56 @@ pub async fn set_conversation_parent(
     Ok(())
 }
 
+/// Core for right-click "New child conversation": creates a live row nested
+/// under `parent_id` (the child inherits the parent's folder, so callers pass
+/// no folder). Unlike `create_conversation_core`, the row is a sidebar CHILD —
+/// visible only inside the parent's expanded subtree.
+pub async fn create_child_conversation_core(
+    conn: &sea_orm::DatabaseConnection,
+    parent_id: i32,
+    agent_type: AgentType,
+    title: Option<String>,
+) -> Result<i32, AppCommandError> {
+    let parent = conversation_service::get_by_id(conn, parent_id)
+        .await
+        .map_err(|_| {
+            AppCommandError::not_found("Parent conversation not found")
+                .with_detail(format!("parent_id={parent_id}"))
+        })?;
+    let git_branch = if let Some(folder) =
+        folder_service::get_folder_by_id(conn, parent.folder_id)
+            .await
+            .map_err(AppCommandError::from)?
+    {
+        detect_git_branch(&folder.path).await
+    } else {
+        None
+    };
+    let model =
+        conversation_service::create_child(conn, parent_id, agent_type, title, git_branch)
+            .await
+            .map_err(AppCommandError::from)?;
+    Ok(model.id)
+}
+
+#[cfg(feature = "tauri-runtime")]
+#[cfg_attr(feature = "tauri-runtime", tauri::command)]
+pub async fn create_child_conversation(
+    app: tauri::AppHandle,
+    db: tauri::State<'_, AppDatabase>,
+    parent_id: i32,
+    agent_type: AgentType,
+    title: Option<String>,
+) -> Result<i32, AppCommandError> {
+    let id =
+        create_child_conversation_core(&db.conn, parent_id, agent_type, title).await?;
+    // Both ends change shape: the child joins the parent's subtree and the
+    // parent's expand chevron appears. Re-emit both like set_conversation_parent.
+    emit_conversation_upsert(&EventEmitter::Tauri(app.clone()), &db.conn, id).await;
+    emit_conversation_upsert(&EventEmitter::Tauri(app), &db.conn, parent_id).await;
+    Ok(id)
+}
+
 pub async fn get_conversation_parent_core(
     conn: &sea_orm::DatabaseConnection,
     conversation_id: i32,

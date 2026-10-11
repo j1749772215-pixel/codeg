@@ -275,6 +275,10 @@ pub fn build_router(
             post(handlers::conversations::get_conversation_parent),
         )
         .route(
+            "/create_child_conversation",
+            post(handlers::conversations::create_child_conversation),
+        )
+        .route(
             "/delete_conversation",
             post(handlers::conversations::delete_conversation),
         )

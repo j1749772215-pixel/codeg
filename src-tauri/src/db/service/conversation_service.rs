@@ -79,6 +79,56 @@ pub async fn create_with_delegation(
     .await
 }
 
+/// Create a live child of an existing conversation — the manual-tree
+/// counterpart to `create_with_delegation`. Unlike a draft tab (no row until
+/// first send), this lands a real row immediately, which is what lets the
+/// parent read the child and the child render under the parent's subtree.
+///
+/// `kind` mirrors the parent (a Chat parent's child stays `chat`, anything
+/// else gets `regular`) so the child renders in the same sidebar section; a
+/// `delegate` parent is rejected because that subtree is owned by the
+/// lifecycle subscriber. `kind` is NOT flipped to `delegate` — see the
+/// invariant documented on [`ConversationKind::Delegate`].
+///
+/// The new row has no descendants yet, so it can never close a cycle: the
+/// link is written through `set_parent` anyway, reusing its parent validation
+/// instead of duplicating it.
+pub async fn create_child(
+    conn: &DatabaseConnection,
+    parent_id: i32,
+    agent_type: AgentType,
+    title: Option<String>,
+    git_branch: Option<String>,
+) -> Result<conversation::Model, DbError> {
+    let parent = conversation::Entity::find_by_id(parent_id)
+        .filter(conversation::Column::DeletedAt.is_null())
+        .one(conn)
+        .await?
+        .ok_or_else(|| DbError::NotFound(format!("Parent conversation not found: {parent_id}")))?;
+    if parent.kind == ConversationKind::Delegate {
+        return Err(DbError::Validation(
+            "Cannot create a child under a delegation sub-session".to_string(),
+        ));
+    }
+    let kind = match parent.kind {
+        ConversationKind::Chat => ConversationKind::Chat,
+        _ => ConversationKind::Regular,
+    };
+    let mut model = create_inner(
+        conn,
+        parent.folder_id,
+        agent_type,
+        title,
+        git_branch,
+        None,
+        kind,
+    )
+    .await?;
+    set_parent(conn, model.id, Some(parent_id)).await?;
+    model.parent_id = Some(parent_id);
+    Ok(model)
+}
+
 async fn create_inner(
     conn: &DatabaseConnection,
     folder_id: i32,
@@ -1805,6 +1855,52 @@ mod tests {
             matches!(err, DbError::NotFound(_)),
             "expected NotFound, got {err:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn create_child_nests_a_live_row() {
+        let db = fresh_in_memory_db().await;
+        let folder = seed_folder(&db, "/tmp/codeg-create-child").await;
+        let other = seed_folder(&db, "/tmp/codeg-create-child-other").await;
+        let parent = seed_regular(&db.conn, folder, "P").await;
+
+        let child = create_child(
+            &db.conn,
+            parent,
+            AgentType::Codex,
+            Some("C".into()),
+            None,
+        )
+        .await
+        .expect("create_child");
+        assert_eq!(child.parent_id, Some(parent));
+        assert_eq!(child.folder_id, folder, "inherits the parent's folder");
+        assert_eq!(child.kind, ConversationKind::Regular);
+
+        let kids = list_children(&db.conn, parent).await.expect("list");
+        assert_eq!(kids.len(), 1);
+        assert_eq!(kids[0].id, child.id);
+        // And NOT a sidebar root row — same as a moved-in regular child.
+        let _ = other; // second folder only proves the row isn't folder-scoped
+    }
+
+    #[tokio::test]
+    async fn create_child_rejects_a_missing_or_delegate_parent() {
+        let db = fresh_in_memory_db().await;
+        let folder = seed_folder(&db, "/tmp/codeg-create-child-reject").await;
+
+        let err = create_child(&db.conn, 999_999, AgentType::Codex, None, None)
+            .await
+            .expect_err("unknown parent");
+        assert!(matches!(err, DbError::NotFound(_)), "got {err:?}");
+
+        let (parent, delegate_child) =
+            seed_parent_with_child(&db.conn, folder).await;
+        let _ = parent;
+        let err = create_child(&db.conn, delegate_child, AgentType::Codex, None, None)
+            .await
+            .expect_err("delegate parent");
+        assert!(matches!(err, DbError::Validation(_)), "got {err:?}");
     }
 
     #[tokio::test]

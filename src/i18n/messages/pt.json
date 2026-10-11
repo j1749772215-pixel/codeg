@@ -2135,7 +2135,9 @@
       "moveToParent": "Mover para baixo de…",
       "moveToTopLevel": "Mover para o nível superior",
       "noOtherConversations": "Nenhuma outra conversa para aninhar",
-      "parentCrumbLabel": "Sob: "
+      "parentCrumbLabel": "Sob: ",
+      "newChild": "Nova subconversa",
+      "newChildNoAgents": "Nenhum agente disponível"
     },
     "search": {
       "dialogTitle": "Buscar",

@@ -408,6 +408,31 @@ pub async fn set_conversation_parent(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CreateChildConversationParams {
+    pub parent_id: i32,
+    pub agent_type: AgentType,
+    pub title: Option<String>,
+}
+
+pub async fn create_child_conversation(
+    Extension(state): Extension<Arc<AppState>>,
+    Json(params): Json<CreateChildConversationParams>,
+) -> Result<Json<i32>, AppCommandError> {
+    let result = conv_commands::create_child_conversation_core(
+        &state.db.conn,
+        params.parent_id,
+        params.agent_type,
+        params.title,
+    )
+    .await?;
+    conv_commands::emit_conversation_upsert(&state.emitter, &state.db.conn, result).await;
+    conv_commands::emit_conversation_upsert(&state.emitter, &state.db.conn, params.parent_id)
+        .await;
+    Ok(Json(result))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GetConversationParentParams {
     pub conversation_id: i32,
 }

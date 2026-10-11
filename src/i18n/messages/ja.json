@@ -2135,7 +2135,9 @@
       "moveToParent": "別の会話の下へ移動…",
       "moveToTopLevel": "最上位へ移動",
       "noOtherConversations": "上位にできる会話がありません",
-      "parentCrumbLabel": "上位: "
+      "parentCrumbLabel": "上位: ",
+      "newChild": "子会話を作成",
+      "newChildNoAgents": "利用可能なエージェントがありません"
     },
     "search": {
       "dialogTitle": "検索",

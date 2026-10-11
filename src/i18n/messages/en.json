@@ -2135,7 +2135,9 @@
       "moveToParent": "Move under…",
       "moveToTopLevel": "Move to top level",
       "noOtherConversations": "No other conversation to nest under",
-      "parentCrumbLabel": "Under: "
+      "parentCrumbLabel": "Under: ",
+      "newChild": "New child conversation",
+      "newChildNoAgents": "No agents available"
     },
     "search": {
       "dialogTitle": "Search",

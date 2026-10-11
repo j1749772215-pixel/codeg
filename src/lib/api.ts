@@ -3501,6 +3501,23 @@ export async function createConversation(
  * backing it, then the conversation. Returns the new conversation id plus that
  * folder so the caller can seed `allFolders` (cwd / active-folder) immediately.
  */
+/**
+ * Create a live conversation row nested under `parentId` (the child inherits
+ * the parent's folder) — the "New child conversation" menu action. Unlike a
+ * draft tab, the row exists immediately so the parent can read the child.
+ */
+export async function createChildConversation(
+  parentId: number,
+  agentType: AgentType,
+  title?: string
+): Promise<number> {
+  return getTransport().call("create_child_conversation", {
+    parentId,
+    agentType,
+    title: title ?? null,
+  })
+}
+
 export async function createChatConversation(
   agentType: AgentType,
   title?: string,

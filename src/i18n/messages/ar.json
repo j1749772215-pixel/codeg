@@ -2135,7 +2135,9 @@
       "moveToParent": "النقل تحت…",
       "moveToTopLevel": "النقل إلى المستوى الأعلى",
       "noOtherConversations": "لا توجد محادثة أخرى للتداخل",
-      "parentCrumbLabel": "تحت: "
+      "parentCrumbLabel": "تحت: ",
+      "newChild": "محادثة فرعية جديدة",
+      "newChildNoAgents": "لا تتوفر عملاء"
     },
     "search": {
       "dialogTitle": "بحث",

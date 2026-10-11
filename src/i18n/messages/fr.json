@@ -2135,7 +2135,9 @@
       "moveToParent": "Déplacer sous…",
       "moveToTopLevel": "Déplacer au niveau supérieur",
       "noOtherConversations": "Aucune autre conversation pour imbriquer",
-      "parentCrumbLabel": "Sous : "
+      "parentCrumbLabel": "Sous : ",
+      "newChild": "Nouvelle sous-conversation",
+      "newChildNoAgents": "Aucun agent disponible"
     },
     "search": {
       "dialogTitle": "Rechercher",

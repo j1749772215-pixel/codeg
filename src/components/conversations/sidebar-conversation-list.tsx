@@ -59,6 +59,7 @@ import {
   updateConversationStatus,
   updateConversationPinned,
   setConversationParent,
+  createChildConversation,
   updateFolderColor,
   updateFolderAlias,
   updateFolderDefaultAgent,
@@ -104,6 +105,8 @@ import {
 } from "@/lib/theme-presets"
 import {
   SidebarConversationCard,
+  peekDraggedConversationId,
+  takeDraggedConversationId,
   SubsessionAncestorRails,
   CONV_RAIL_DEPTH_STEP,
 } from "./sidebar-conversation-card"
@@ -2156,6 +2159,31 @@ export function SidebarConversationList({
     [refreshConversations]
   )
 
+  // Right-click "New child conversation": the backend writes a live row nested
+  // under the parent (no draft-tab stage, so the parent can read it at once).
+  // `parentFolderId` comes from the card's own `conversation.folder_id` — a
+  // child always inherits its parent's folder — keeping `conversations` out of
+  // this callback's deps so the card memo keeps bailing out.
+  const handleNewChild = useCallback(
+    async (parentId: number, parentFolderId: number, agentType: AgentType) => {
+      const id = await createChildConversation(parentId, agentType)
+      openConversations()
+      openTab(parentFolderId, id, agentType, false)
+      // Expand the parent's subtree so the new row is visible where it was
+      // created; the lazy-children effect fetches it on the next render.
+      setConversationExpanded((prev) => {
+        if (prev.has(parentId)) return prev
+        const next = new Set(prev)
+        next.add(parentId)
+        saveConversationExpanded([...next])
+        return next
+      })
+      void ensureChildrenLoaded(parentId)
+      refreshConversations()
+    },
+    [ensureChildrenLoaded, openConversations, openTab, refreshConversations]
+  )
+
   // Candidates for the "Move under…" submenu: EVERY top-level conversation, in
   // every folder — not just the row's own folder.
   //
@@ -2945,17 +2973,35 @@ export function SidebarConversationList({
       )
     }
     if (row.kind === "folder") {
-      return folderHeaderElement(row.folderId, {
-        dragging: dragging?.kind === "folder" && dragging.id === row.folderId,
-        // Worktree child headers follow their parent and never reorder on
-        // their own, so they are not drag initiators (no grip). Only
-        // reorderable top-level repos keep the grip.
-        grip: !(showWorktrees && childToParent.has(row.folderId)),
-        // While this folder's sticky overlay is showing, the overlay is the
-        // accessible control; make the (occluded) in-list copy inert so it is
-        // not a duplicate tab stop / announcement.
-        suppressed: stickyFolderId === row.folderId,
-      })
+      // Dropping a dragged conversation on a folder header un-nests it.
+      return (
+        <div
+          onDragOver={(e) => {
+            if (peekDraggedConversationId() == null) return
+            e.preventDefault()
+            e.dataTransfer.dropEffect = "move"
+          }}
+          onDrop={(e) => {
+            const id = takeDraggedConversationId()
+            if (id == null) return
+            e.preventDefault()
+            handleMoveToParent(id, null)
+          }}
+        >
+          {folderHeaderElement(row.folderId, {
+            dragging:
+              dragging?.kind === "folder" && dragging.id === row.folderId,
+            // Worktree child headers follow their parent and never reorder on
+            // their own, so they are not drag initiators (no grip). Only
+            // reorderable top-level repos keep the grip.
+            grip: !(showWorktrees && childToParent.has(row.folderId)),
+            // While this folder's sticky overlay is showing, the overlay is the
+            // accessible control; make the (occluded) in-list copy inert so it is
+            // not a duplicate tab stop / announcement.
+            suppressed: stickyFolderId === row.folderId,
+          })}
+        </div>
+      )
     }
     if (row.kind === "root-group") {
       // A container repo's own-sessions sub-group. Shares the repo id (for its
@@ -3165,10 +3211,10 @@ export function SidebarConversationList({
         // drops itself, since it alone knows its own id. Filtering here would
         // mint a fresh array on every render and defeat the card memo's
         // bail-out, which the re-render budget tests below pin.
-        parentCandidates={
-          row.recent ? undefined : stableParentCandidates
-        }
+        parentCandidates={row.recent ? undefined : stableParentCandidates}
         onMoveToParent={row.recent ? undefined : handleMoveToParent}
+        childAgentTypes={row.recent ? undefined : availableAgents}
+        onNewChild={row.recent ? undefined : handleNewChild}
         depth={row.depth}
         hasChildren={conv.child_count > 0}
         expanded={conversationExpanded.has(conv.id)}

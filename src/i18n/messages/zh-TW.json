@@ -2135,7 +2135,9 @@
       "moveToParent": "移到…",
       "moveToTopLevel": "移到最上層",
       "noOtherConversations": "沒有其他會話可作上級",
-      "parentCrumbLabel": "上級："
+      "parentCrumbLabel": "上級：",
+      "newChild": "新建子對話",
+      "newChildNoAgents": "沒有可用的智能體"
     },
     "search": {
       "dialogTitle": "搜尋",

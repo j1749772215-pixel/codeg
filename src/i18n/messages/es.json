@@ -2135,7 +2135,9 @@
       "moveToParent": "Mover bajo…",
       "moveToTopLevel": "Mover al nivel superior",
       "noOtherConversations": "No hay otra conversación donde anidar",
-      "parentCrumbLabel": "Depende de: "
+      "parentCrumbLabel": "Depende de: ",
+      "newChild": "Nueva conversación hija",
+      "newChildNoAgents": "No hay agentes disponibles"
     },
     "search": {
       "dialogTitle": "Buscar",
