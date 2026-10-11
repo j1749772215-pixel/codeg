@@ -3560,6 +3560,31 @@ export async function deleteConversation(
   return getTransport().call("delete_conversation", { conversationId })
 }
 
+/**
+ * Move a conversation under a new parent, or back to the top level when
+ * `parentId` is null. The backend rejects self-parenting and cycles.
+ */
+export async function setConversationParent(
+  conversationId: number,
+  parentId: number | null
+): Promise<void> {
+  return getTransport().call("set_conversation_parent", {
+    conversationId,
+    parentId,
+  })
+}
+
+/**
+ * The conversation this one is nested under, or null at the top level. Lets a
+ * child view name its parent — the sidebar only routes downward, so without
+ * this a nested conversation cannot point back up.
+ */
+export async function getConversationParent(
+  conversationId: number
+): Promise<DbConversationSummary | null> {
+  return getTransport().call("get_conversation_parent", { conversationId })
+}
+
 // Folder command management
 
 export async function listFolderCommands(

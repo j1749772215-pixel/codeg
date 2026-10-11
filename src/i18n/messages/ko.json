@@ -2115,7 +2115,11 @@
       "markCompleted": "완료로 표시",
       "reopen": "다시 열기",
       "expandSubsessions": "하위 대화 펼치기",
-      "collapseSubsessions": "하위 대화 접기"
+      "collapseSubsessions": "하위 대화 접기",
+      "moveToParent": "다른 대화 아래로 이동…",
+      "moveToTopLevel": "최상위로 이동",
+      "noOtherConversations": "상위로 지정할 대화가 없습니다",
+      "parentCrumbLabel": "상위: "
     },
     "search": {
       "dialogTitle": "검색",

@@ -58,6 +58,7 @@ import {
   updateConversationTitle,
   updateConversationStatus,
   updateConversationPinned,
+  setConversationParent,
   updateFolderColor,
   updateFolderAlias,
   updateFolderDefaultAgent,
@@ -2143,6 +2144,74 @@ export function SidebarConversationList({
     [updateConversationLocal]
   )
 
+  const handleMoveToParent = useCallback(
+    async (id: number, parentId: number | null) => {
+      await setConversationParent(id, parentId)
+      // The moved row changes which section it belongs to (it stops being a
+      // top-level row and becomes a child), and the sidebar's grouping is
+      // derived, not patched in place — so re-read rather than guess at a local
+      // splice. The backend also re-emits both ends over the WS.
+      refreshConversations()
+    },
+    [refreshConversations]
+  )
+
+  // Candidates for the "Move under…" submenu: EVERY top-level conversation, in
+  // every folder — not just the row's own folder.
+  //
+  // Scoping this to the same folder was a mistake: a folder with 3 sessions
+  // yields 2 candidates once the row itself is dropped, which reads as a broken
+  // menu. Nesting across folders is legitimate (a research session under a
+  // planning session, say), and the tree renders per-folder anyway.
+  //
+  // Only top-level rows qualify. A descendant of a row is by definition not
+  // top-level, so it is absent here — which is what keeps the submenu from
+  // offering a move the backend would reject as a cycle.
+  //
+  // `folderName` rides along so the menu can disambiguate same-titled sessions
+  // from different folders. Titles stay raw (nullable) and are formatted by the
+  // card, which already owns the `Folder.conversationCard` translations and the
+  // shared title formatter.
+  //
+  // Declared before `parentCandidates` below, which shares the entry shape.
+  type CandidateEntry = {
+    id: number
+    title: string | null
+    folderName: string | null
+  }
+
+  const parentCandidates = useMemo(() => {
+    const list: CandidateEntry[] = []
+    for (const c of conversations) {
+      if (c.parent_id != null) continue
+      list.push({
+        id: c.id,
+        title: c.title,
+        folderName: folderIndex.get(c.folder_id)?.name ?? null,
+      })
+    }
+    return list
+  }, [conversations, folderIndex])
+
+  // Re-key the array to its CONTENT, so a change that does not alter top-level
+  // membership (a status flip, a live transcript chunk) keeps the array identity
+  // and every card under it bails out of `memo`. Without this the array above is
+  // rebuilt on every `conversations` write and handed to every card fresh — the
+  // exact re-render blowup the sidebar's re-render-budget tests exist to catch.
+  const parentCandidatesRef = useRef<{
+    key: string
+    list: CandidateEntry[]
+  } | null>(null)
+  const stableParentCandidates = useMemo(() => {
+    const key = parentCandidates
+      .map((e) => `${e.id}\u0000${e.title ?? ""}\u0000${e.folderName ?? ""}`)
+      .join("\u0001")
+    const cached = parentCandidatesRef.current
+    if (cached && cached.key === key) return cached.list
+    parentCandidatesRef.current = { key, list: parentCandidates }
+    return parentCandidates
+  }, [parentCandidates])
+
   const handleNewConversation = useCallback(() => {
     // Starting a conversation returns to the conversation workspace if a
     // workbench route (e.g. Automations) was taking over the content region.
@@ -3092,6 +3161,14 @@ export function SidebarConversationList({
         onStatusChange={handleStatusChange}
         onNewConversation={handleNewConversationForFolder}
         onTogglePin={handleTogglePin}
+        // Passed UNFILTERED (a stable reference held by content key) — the card
+        // drops itself, since it alone knows its own id. Filtering here would
+        // mint a fresh array on every render and defeat the card memo's
+        // bail-out, which the re-render budget tests below pin.
+        parentCandidates={
+          row.recent ? undefined : stableParentCandidates
+        }
+        onMoveToParent={row.recent ? undefined : handleMoveToParent}
         depth={row.depth}
         hasChildren={conv.child_count > 0}
         expanded={conversationExpanded.has(conv.id)}

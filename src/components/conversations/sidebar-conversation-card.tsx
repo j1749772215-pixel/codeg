@@ -4,6 +4,7 @@ import {
   memo,
   useState,
   useCallback,
+  useMemo,
   type CSSProperties,
   type FocusEvent,
 } from "react"
@@ -18,6 +19,8 @@ import {
   Pin,
   PinOff,
   CheckCircle2,
+  Check,
+  CornerDownRight,
   FolderX,
   Info,
   ChevronRight,
@@ -193,6 +196,23 @@ interface SidebarConversationCardProps {
   onStatusChange: (id: number, status: ConversationStatus) => Promise<void>
   onNewConversation?: (folderId: number) => void
   onTogglePin?: (id: number, nextPinned: boolean) => void
+  /**
+   * Conversations this row may be nested under — every top-level conversation in
+   * the workspace, minus this one.
+   *
+   * The self-exclusion happens HERE rather than in the list because the list
+   * hands every card the same stable array: filtering up there would allocate a
+   * new array per row per render and defeat this card's `memo` bail-out (the
+   * sidebar's re-render-budget tests pin that). Omitted where nesting makes no
+   * sense (a delegation child, the Recent mirror), which hides the submenu.
+   */
+  parentCandidates?: {
+    id: number
+    title: string | null
+    folderName: string | null
+  }[]
+  /** Nest this conversation under `parentId`, or un-nest it when null. */
+  onMoveToParent?: (id: number, parentId: number | null) => void
   /** Delegation-tree nesting depth (0 = root). Drives the per-level indent. */
   depth?: number
   /** True when `child_count > 0`: the conversation has delegation children, so
@@ -216,6 +236,8 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
   onStatusChange,
   onNewConversation,
   onTogglePin,
+  parentCandidates,
+  onMoveToParent,
   depth = 0,
   hasChildren = false,
   expanded = false,
@@ -243,6 +265,14 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
   // Nor a branch chip, like they get no tags: their parent row carries it.
   const isSubsession = conversation.parent_id != null
   const branch = useBranchChip(isSubsession ? null : conversation.git_branch)
+
+  // A conversation cannot be its own parent, so it never appears in its own
+  // submenu. Derived here (not in the list) to keep the prop reference stable —
+  // see `parentCandidates`.
+  const nestableParents = useMemo(
+    () => parentCandidates?.filter((c) => c.id !== conversation.id),
+    [parentCandidates, conversation.id]
+  )
 
   const handleClick = useCallback(() => {
     onSelect(conversation.id, conversation.agent_type, conversation.folder_id)
@@ -740,6 +770,83 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
               </ContextMenuSubContent>
             </ContextMenuSub>
             <ContextMenuSeparator />
+            {/* Manual nesting. The backend accepts a parent_id write (see
+                `conversation_service::set_parent`), which is what turns the
+                delegation-only tree into one the user can arrange. Rendered only
+                where a caller supplied both the candidate list and the handler,
+                so the Recent mirror never gets it.
+                
+                Deliberately NOT gated on `!isSubsession`: a nested row is still
+                reachable — it renders under its expanded parent — and must keep
+                "Move to top level" so the user can undo a nesting. Gating it the
+                way the tag / hover actions are gated would make a nested
+                conversation impossible to un-nest from the sidebar. */}
+            {onMoveToParent && nestableParents && (
+              <>
+                <ContextMenuSub>
+                  <ContextMenuSubTrigger>
+                    <CornerDownRight className="h-4 w-4" />
+                    {t("moveToParent")}
+                  </ContextMenuSubTrigger>
+                  {/* Capped + scrollable: the candidate list is every top-level
+                      conversation in the workspace, which can run to dozens.
+                      Without a ceiling the submenu would grow past the viewport
+                      and Radix would not scroll it. */}
+                  <ContextMenuSubContent className="max-h-[22rem] min-w-[16rem] overflow-y-auto">
+                    {conversation.parent_id != null && (
+                      <ContextMenuItem
+                        onSelect={() => onMoveToParent(conversation.id, null)}
+                        className="gap-2"
+                      >
+                        <span className="min-w-0 flex-1 truncate">
+                          {t("moveToTopLevel")}
+                        </span>
+                      </ContextMenuItem>
+                    )}
+                    {conversation.parent_id != null &&
+                      nestableParents.length > 0 && <ContextMenuSeparator />}
+                    {nestableParents.length === 0 &&
+                    conversation.parent_id == null ? (
+                      <ContextMenuItem disabled>
+                        <span className="min-w-0 flex-1 truncate text-t-tertiary">
+                          {t("noOtherConversations")}
+                        </span>
+                      </ContextMenuItem>
+                    ) : (
+                      nestableParents.map((candidate) => (
+                        <ContextMenuItem
+                          key={candidate.id}
+                          onSelect={() =>
+                            onMoveToParent(conversation.id, candidate.id)
+                          }
+                          // Items stack: title on top, folder underneath. The
+                          // list spans folders, so two sessions can share a
+                          // title — without the folder line they are
+                          // indistinguishable.
+                          className="flex-col items-start gap-0.5"
+                        >
+                          <span className="flex w-full items-center gap-2">
+                            <span className="min-w-0 flex-1 truncate">
+                              {formatConversationTitle(candidate.title) ||
+                                t("untitledConversation")}
+                            </span>
+                            {conversation.parent_id === candidate.id ? (
+                              <Check className="h-3.5 w-3.5 shrink-0" />
+                            ) : null}
+                          </span>
+                          {candidate.folderName ? (
+                            <span className="w-full truncate text-[0.6875rem] text-t-tertiary">
+                              {candidate.folderName}
+                            </span>
+                          ) : null}
+                        </ContextMenuItem>
+                      ))
+                    )}
+                  </ContextMenuSubContent>
+                </ContextMenuSub>
+                <ContextMenuSeparator />
+              </>
+            )}
             <ContextMenuItem
               variant="destructive"
               onSelect={() => setDeleteOpen(true)}

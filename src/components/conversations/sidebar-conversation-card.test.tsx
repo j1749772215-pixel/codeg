@@ -214,6 +214,103 @@ describe("SidebarConversationCard pin action", () => {
   })
 })
 
+// Manual nesting. `parentCandidates` / `onMoveToParent` are optional, so the
+// submenu only exists where the sidebar supplies them — these tests cover both
+// the "wired up" and the "absent" shape, since a card rendered without them
+// (delegation children, the Recent mirror) must not grow a dead menu item.
+describe("SidebarConversationCard move to parent", () => {
+  const onMoveToParent = vi.fn()
+
+  beforeEach(() => {
+    onMoveToParent.mockClear()
+  })
+
+  function renderCard(
+    c: DbConversationSummary,
+    candidates?: {
+      id: number
+      title: string | null
+      folderName: string | null
+    }[]
+  ) {
+    return renderWithIntl(
+      <SidebarConversationCard
+        conversation={c}
+        isSelected={false}
+        timeLabel=""
+        onSelect={onSelect}
+        onDoubleClick={onDoubleClick}
+        onRename={onRename}
+        onDelete={onDelete}
+        onStatusChange={onStatusChange}
+        parentCandidates={candidates}
+        onMoveToParent={candidates ? onMoveToParent : undefined}
+      />
+    )
+  }
+
+  it("nests a conversation under the chosen candidate", () => {
+    const { getByText } = renderCard(conv(1), [
+      { id: 9, title: "Parent nine", folderName: "Code" },
+    ])
+    fireEvent.contextMenu(getByText("conv-1"))
+    fireEvent.click(getByText("Move under…"))
+    fireEvent.click(getByText("Parent nine"))
+    expect(onMoveToParent).toHaveBeenCalledWith(1, 9)
+  })
+
+  it("shows each candidate's folder, since the list spans folders", () => {
+    const { getByText } = renderCard(conv(7), [
+      { id: 9, title: "Parent nine", folderName: "Code" },
+    ])
+    fireEvent.contextMenu(getByText("conv-7"))
+    fireEvent.click(getByText("Move under…"))
+    expect(getByText("Code")).toBeTruthy()
+  })
+
+  it("renders a null-titled candidate under the untitled label", () => {
+    const { getByText } = renderCard(conv(2), [
+      { id: 9, title: null, folderName: "Code" },
+    ])
+    fireEvent.contextMenu(getByText("conv-2"))
+    fireEvent.click(getByText("Move under…"))
+    expect(getByText("Untitled conversation")).toBeTruthy()
+  })
+
+  it("offers no top-level escape for a conversation that has no parent", () => {
+    const { getByText, queryByText } = renderCard(conv(3), [
+      { id: 9, title: "Parent nine", folderName: "Code" },
+    ])
+    fireEvent.contextMenu(getByText("conv-3"))
+    fireEvent.click(getByText("Move under…"))
+    expect(queryByText("Move to top level")).toBeNull()
+  })
+
+  it("offers the top-level escape once a parent is set", () => {
+    const nested: DbConversationSummary = { ...conv(4), parent_id: 9 }
+    const { getByText } = renderCard(nested, [
+      { id: 9, title: "Parent nine", folderName: "Code" },
+    ])
+    fireEvent.contextMenu(getByText("conv-4"))
+    fireEvent.click(getByText("Move under…"))
+    fireEvent.click(getByText("Move to top level"))
+    expect(onMoveToParent).toHaveBeenCalledWith(4, null)
+  })
+
+  it("explains itself when there is nothing to nest under", () => {
+    const { getByText } = renderCard(conv(5), [])
+    fireEvent.contextMenu(getByText("conv-5"))
+    fireEvent.click(getByText("Move under…"))
+    expect(getByText("No other conversation to nest under")).toBeTruthy()
+  })
+
+  it("hides the submenu entirely when no candidates are supplied", () => {
+    const { getByText, queryByText } = renderCard(conv(6))
+    fireEvent.contextMenu(getByText("conv-6"))
+    expect(queryByText("Move under…")).toBeNull()
+  })
+})
+
 // The hover-reveal icon buttons live in the row's right slot as siblings of the
 // clickable row button (never nested). They carry only an aria-label (icon, no
 // text), so getByLabelText addresses them unambiguously — distinct from the

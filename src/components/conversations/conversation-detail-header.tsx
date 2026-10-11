@@ -1,9 +1,10 @@
 "use client"
 
-import { memo, useCallback, useState } from "react"
+import { memo, useCallback, useEffect, useState } from "react"
 import {
   ChevronRight,
   Circle,
+  CornerDownLeft,
   EllipsisVertical,
   Info,
   Pencil,
@@ -19,6 +20,7 @@ import {
   updateConversationPinned,
   updateConversationStatus,
   updateConversationTitle,
+  getConversationParent,
 } from "@/lib/api"
 import { formatConversationTitle } from "@/lib/conversation-title"
 import { ConversationHeaderFolderPicker } from "@/components/chat/conversation-context-bar"
@@ -107,7 +109,7 @@ export const ConversationDetailHeader = memo(function ConversationDetailHeader({
   const tConv = useTranslations("Folder.conversation")
   const tStatus = useTranslations("Folder.statusLabels")
   const tDetails = useTranslations("Folder.sessionDetails")
-  const { closeTab, openNewConversationTab } = useTabActions()
+  const { closeTab, openNewConversationTab, openTab } = useTabActions()
   const updateConversationLocal = useAppWorkspaceStore(
     (s) => s.updateConversationLocal
   )
@@ -170,6 +172,60 @@ export const ConversationDetailHeader = memo(function ConversationDetailHeader({
   const persisted = conversationId != null
   const displayTitle =
     formatConversationTitle(title) || t("untitledConversation")
+
+  // Which conversation this one is nested under, if any. The sidebar only routes
+  // DOWNWARD (`list_children`), so a nested conversation has no other way to
+  // name its parent — this crumb is the way back up.
+  //
+  // Fetched on id change rather than read from the store: the header is a single
+  // instance reused across tabs and the store's `conversations` list holds only
+  // top-level rows, so a nested child is simply absent from it.
+  const [parent, setParent] = useState<{
+    id: number
+    agentType: string
+    folderId: number
+    title: string | null
+  } | null>(null)
+
+  useEffect(() => {
+    if (conversationId == null) {
+      setParent(null)
+      return
+    }
+    let cancelled = false
+    getConversationParent(conversationId)
+      .then((row) => {
+        if (cancelled) return
+        setParent(
+          row
+            ? {
+                id: row.id,
+                agentType: row.agent_type,
+                folderId: row.folder_id,
+                title: row.title,
+              }
+            : null
+        )
+      })
+      .catch((err) => {
+        // A missing breadcrumb is cosmetic; never let it break the header.
+        console.error("[ConversationDetailHeader] load parent:", err)
+        if (!cancelled) setParent(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [conversationId])
+
+  const handleOpenParent = useCallback(() => {
+    if (!parent) return
+    openTab(
+      parent.folderId,
+      parent.id,
+      parent.agentType as Parameters<typeof openTab>[2],
+      false
+    )
+  }, [parent, openTab])
 
   const handleTogglePin = useCallback(() => {
     if (conversationId == null) return
@@ -274,6 +330,31 @@ export const ConversationDetailHeader = memo(function ConversationDetailHeader({
           className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50"
           aria-hidden
         />
+        {/* Parent crumb: only for a nested conversation. Sits between the folder
+            and the title so the header reads folder › parent › title, which is
+            the same left-to-right order as the sidebar's tree. */}
+        {parent && (
+          <>
+            <button
+              type="button"
+              onClick={handleOpenParent}
+              className="flex max-w-[12rem] min-w-0 shrink items-center gap-1 rounded px-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              title={`${t("parentCrumbLabel")}${
+                formatConversationTitle(parent.title) || t("untitledConversation")
+              }`}
+            >
+              <CornerDownLeft className="h-3 w-3 shrink-0" aria-hidden />
+              <span className="truncate">
+                {formatConversationTitle(parent.title) ||
+                  t("untitledConversation")}
+              </span>
+            </button>
+            <ChevronRight
+              className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50"
+              aria-hidden
+            />
+          </>
+        )}
         {/* The title takes the ellipsis, so the folder crumb on the left stays
             fully visible — but grows only as far as its own text
             (`max-w-max`), so the tags follow it instead of the far edge. */}

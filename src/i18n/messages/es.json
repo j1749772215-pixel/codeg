@@ -2115,7 +2115,11 @@
       "markCompleted": "Marcar como completada",
       "reopen": "Reabrir",
       "expandSubsessions": "Expandir subconversaciones",
-      "collapseSubsessions": "Contraer subconversaciones"
+      "collapseSubsessions": "Contraer subconversaciones",
+      "moveToParent": "Mover bajo…",
+      "moveToTopLevel": "Mover al nivel superior",
+      "noOtherConversations": "No hay otra conversación donde anidar",
+      "parentCrumbLabel": "Depende de: "
     },
     "search": {
       "dialogTitle": "Buscar",

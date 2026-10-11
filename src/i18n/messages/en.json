@@ -2115,7 +2115,11 @@
       "markCompleted": "Mark as completed",
       "reopen": "Reopen",
       "expandSubsessions": "Expand sub-conversations",
-      "collapseSubsessions": "Collapse sub-conversations"
+      "collapseSubsessions": "Collapse sub-conversations",
+      "moveToParent": "Move under…",
+      "moveToTopLevel": "Move to top level",
+      "noOtherConversations": "No other conversation to nest under",
+      "parentCrumbLabel": "Under: "
     },
     "search": {
       "dialogTitle": "Search",

@@ -1036,6 +1036,119 @@ pub async fn reparent_folder_conversations(
     Ok(res.rows_affected)
 }
 
+/// How far up the `parent_id` chain `set_parent` will walk while looking for a
+/// cycle. A well-formed tree is far shallower than this; the cap only exists so
+/// a pre-existing cycle (written before this function did the checking) cannot
+/// make the walk spin forever.
+const MAX_PARENT_WALK: usize = 64;
+
+/// Move a conversation under a new parent, or back to the top level when
+/// `parent_id` is `None`. Returns the row's **previous** parent so a caller can
+/// report or reverse the change.
+///
+/// This deliberately makes `parent_id` writable, which retires the invariant
+/// documented on [`ConversationKind::Delegate`] — "set once at insert, never
+/// updated", the reason the chain was previously guaranteed acyclic by
+/// construction. Because the field is now mutable, that guarantee has to be
+/// enforced here instead: without the walk below, `A → B` plus `B → A` would
+/// make the sidebar's recursive `pushConversationRow` render a broken tree and
+/// silently drop rows.
+///
+/// `kind` is intentionally left alone. A `regular` row that gains a parent
+/// stops being a sidebar row (the frontend skips `parent_id != null`) and
+/// starts rendering as a child, which is the whole point; flipping it to
+/// `delegate` would additionally make it look like an agent-spawned session to
+/// every consumer that branches on `kind`.
+pub async fn set_parent(
+    conn: &DatabaseConnection,
+    conversation_id: i32,
+    parent_id: Option<i32>,
+) -> Result<Option<i32>, DbError> {
+    let row = conversation::Entity::find_by_id(conversation_id)
+        .filter(conversation::Column::DeletedAt.is_null())
+        .one(conn)
+        .await?
+        .ok_or_else(|| DbError::NotFound(format!("Conversation not found: {conversation_id}")))?;
+
+    if parent_id == Some(conversation_id) {
+        return Err(DbError::Validation(
+            "A conversation cannot be its own parent".to_string(),
+        ));
+    }
+
+    if let Some(target) = parent_id {
+        let parent = conversation::Entity::find_by_id(target)
+            .filter(conversation::Column::DeletedAt.is_null())
+            .one(conn)
+            .await?
+            .ok_or_else(|| DbError::NotFound(format!("Parent conversation not found: {target}")))?;
+
+        // Reject when `target` is already a descendant of this conversation —
+        // i.e. walking up from `target` reaches us. That is the same condition
+        // as "the new edge would close a cycle", expressed on the side of the
+        // graph we can traverse with the index we have.
+        let mut cursor = parent.parent_id;
+        for _ in 0..MAX_PARENT_WALK {
+            match cursor {
+                Some(ancestor) if ancestor == conversation_id => {
+                    return Err(DbError::Validation(
+                        "Cannot move a conversation under its own descendant".to_string(),
+                    ));
+                }
+                Some(ancestor) => {
+                    cursor = conversation::Entity::find_by_id(ancestor)
+                        .filter(conversation::Column::DeletedAt.is_null())
+                        .one(conn)
+                        .await?
+                        .and_then(|m| m.parent_id);
+                }
+                None => break,
+            }
+        }
+    }
+
+    let previous = row.parent_id;
+    let mut active: conversation::ActiveModel = row.into();
+    active.parent_id = Set(parent_id);
+    active.updated_at = Set(Utc::now());
+    active.update(conn).await?;
+
+    Ok(previous)
+}
+
+/// The conversation this one is nested under, or `None` at the top level.
+///
+/// Powers the child view's "under <parent>" breadcrumb. Without it a nested
+/// conversation is a dead end: the sidebar only routes *downward* from a parent
+/// (`list_children`), so from inside a child there is nothing that names its
+/// parent — which is the "children can't see their parent" gap this feature
+/// exists to close.
+///
+/// Returns `Ok(None)` for an unknown or soft-deleted parent rather than an
+/// error: the caller is rendering a label, and a torn row is better shown as
+/// "no parent" than as a failed navigation.
+pub async fn get_parent(
+    conn: &DatabaseConnection,
+    conversation_id: i32,
+) -> Result<Option<DbConversationSummary>, DbError> {
+    let child = conversation::Entity::find_by_id(conversation_id)
+        .filter(conversation::Column::DeletedAt.is_null())
+        .one(conn)
+        .await?
+        .ok_or_else(|| DbError::NotFound(format!("Conversation not found: {conversation_id}")))?;
+
+    let Some(parent_id) = child.parent_id else {
+        return Ok(None);
+    };
+
+    let parent = conversation::Entity::find_by_id(parent_id)
+        .filter(conversation::Column::DeletedAt.is_null())
+        .one(conn)
+        .await?;
+
+    Ok(parent.map(conv_to_summary))
+}
+
 pub async fn soft_delete(conn: &DatabaseConnection, conversation_id: i32) -> Result<(), DbError> {
     let conv = conversation::Entity::find_by_id(conversation_id)
         .filter(conversation::Column::DeletedAt.is_null())
@@ -1520,6 +1633,177 @@ mod tests {
         assert!(
             ids.contains(&parent) && ids.contains(&child),
             "both parent + child must appear when include_children=true, got: {ids:?}",
+        );
+    }
+
+    /// A plain (non-delegation) conversation, i.e. one that is a sidebar row and
+    /// therefore a legal target for the manual "Move under…" action.
+    async fn seed_regular(conn: &DatabaseConnection, folder_id: i32, title: &str) -> i32 {
+        create(conn, folder_id, AgentType::ClaudeCode, Some(title.into()), None)
+            .await
+            .expect("regular")
+            .id
+    }
+
+    #[tokio::test]
+    async fn set_parent_nests_a_regular_conversation() {
+        let db = fresh_in_memory_db().await;
+        let folder = seed_folder(&db, "/tmp/codeg-set-parent-basic").await;
+        let parent = seed_regular(&db.conn, folder, "P").await;
+        let child = seed_regular(&db.conn, folder, "C").await;
+
+        let previous = set_parent(&db.conn, child, Some(parent))
+            .await
+            .expect("set_parent");
+        assert_eq!(previous, None, "child started at the top level");
+
+        let kids = list_children(&db.conn, parent).await.expect("list");
+        assert_eq!(kids.len(), 1, "parent should now own exactly one child");
+        assert_eq!(kids[0].id, child);
+
+        // `kind` must stay `regular`: flipping it to `delegate` would make every
+        // consumer that branches on `kind` treat a hand-nested row as an
+        // agent-spawned session.
+        let row = conversation::Entity::find_by_id(child)
+            .one(&db.conn)
+            .await
+            .expect("query")
+            .expect("row");
+        assert_eq!(row.kind, ConversationKind::Regular);
+    }
+
+    #[tokio::test]
+    async fn set_parent_none_returns_a_conversation_to_the_top_level() {
+        let db = fresh_in_memory_db().await;
+        let folder = seed_folder(&db, "/tmp/codeg-set-parent-unset").await;
+        let parent = seed_regular(&db.conn, folder, "P").await;
+        let child = seed_regular(&db.conn, folder, "C").await;
+
+        set_parent(&db.conn, child, Some(parent)).await.expect("nest");
+        let previous = set_parent(&db.conn, child, None).await.expect("un-nest");
+        assert_eq!(previous, Some(parent), "returns where it came from");
+
+        let kids = list_children(&db.conn, parent).await.expect("list");
+        assert!(kids.is_empty(), "parent must have no children left");
+    }
+
+    #[tokio::test]
+    async fn set_parent_rejects_self_parenting() {
+        let db = fresh_in_memory_db().await;
+        let folder = seed_folder(&db, "/tmp/codeg-set-parent-self").await;
+        let id = seed_regular(&db.conn, folder, "A").await;
+
+        let err = set_parent(&db.conn, id, Some(id))
+            .await
+            .expect_err("self-parenting must be rejected");
+        assert!(
+            matches!(err, DbError::Validation(_)),
+            "expected Validation, got {err:?}"
+        );
+    }
+
+    /// The case the removed "set once at insert" invariant used to make
+    /// impossible: `A → B` and then `B → A` would close a cycle and make the
+    /// sidebar's recursive row walk render a broken tree.
+    #[tokio::test]
+    async fn set_parent_rejects_a_cycle() {
+        let db = fresh_in_memory_db().await;
+        let folder = seed_folder(&db, "/tmp/codeg-set-parent-cycle").await;
+        let a = seed_regular(&db.conn, folder, "A").await;
+        let b = seed_regular(&db.conn, folder, "B").await;
+
+        set_parent(&db.conn, b, Some(a)).await.expect("A owns B");
+
+        let err = set_parent(&db.conn, a, Some(b))
+            .await
+            .expect_err("B is a descendant of A, so A cannot move under B");
+        assert!(
+            matches!(err, DbError::Validation(_)),
+            "expected Validation, got {err:?}"
+        );
+
+        // The rejected move must not have partially applied.
+        let a_row = conversation::Entity::find_by_id(a)
+            .one(&db.conn)
+            .await
+            .expect("query")
+            .expect("row");
+        assert_eq!(a_row.parent_id, None, "A must still be top-level");
+    }
+
+    /// A deeper chain: moving the root under its own grandchild must be caught by
+    /// the walk, not just the one-level case.
+    #[tokio::test]
+    async fn set_parent_rejects_a_deep_cycle() {
+        let db = fresh_in_memory_db().await;
+        let folder = seed_folder(&db, "/tmp/codeg-set-parent-deep").await;
+        let a = seed_regular(&db.conn, folder, "A").await;
+        let b = seed_regular(&db.conn, folder, "B").await;
+        let c = seed_regular(&db.conn, folder, "C").await;
+
+        set_parent(&db.conn, b, Some(a)).await.expect("A owns B");
+        set_parent(&db.conn, c, Some(b)).await.expect("B owns C");
+
+        let err = set_parent(&db.conn, a, Some(c))
+            .await
+            .expect_err("C is a grandchild of A");
+        assert!(
+            matches!(err, DbError::Validation(_)),
+            "expected Validation, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_parent_reports_a_nested_conversation_parent() {
+        let db = fresh_in_memory_db().await;
+        let folder = seed_folder(&db, "/tmp/codeg-get-parent-nested").await;
+        let parent = seed_regular(&db.conn, folder, "P").await;
+        let child = seed_regular(&db.conn, folder, "C").await;
+
+        assert!(
+            get_parent(&db.conn, child).await.expect("parent").is_none(),
+            "a top-level conversation has no parent"
+        );
+
+        set_parent(&db.conn, child, Some(parent)).await.expect("nest");
+
+        let found = get_parent(&db.conn, child)
+            .await
+            .expect("parent")
+            .expect("child now has a parent");
+        assert_eq!(found.id, parent, "the child's parent is the row we nested it under");
+    }
+
+    #[tokio::test]
+    async fn get_parent_is_none_when_the_parent_was_soft_deleted() {
+        let db = fresh_in_memory_db().await;
+        let folder = seed_folder(&db, "/tmp/codeg-get-parent-deleted").await;
+        let parent = seed_regular(&db.conn, folder, "P").await;
+        let child = seed_regular(&db.conn, folder, "C").await;
+
+        set_parent(&db.conn, child, Some(parent)).await.expect("nest");
+        soft_delete(&db.conn, parent).await.expect("delete parent");
+
+        // The crumb is a label, not a link target: a dangling parent reads as
+        // "no parent" rather than as a failed lookup.
+        assert!(
+            get_parent(&db.conn, child).await.expect("parent").is_none(),
+            "a soft-deleted parent is reported as absent"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_parent_rejects_a_missing_target() {
+        let db = fresh_in_memory_db().await;
+        let folder = seed_folder(&db, "/tmp/codeg-set-parent-missing").await;
+        let id = seed_regular(&db.conn, folder, "A").await;
+
+        let err = set_parent(&db.conn, id, Some(999_999))
+            .await
+            .expect_err("unknown parent must be rejected");
+        assert!(
+            matches!(err, DbError::NotFound(_)),
+            "expected NotFound, got {err:?}"
         );
     }
 

@@ -2115,7 +2115,11 @@
       "markCompleted": "وضع علامة كمكتمل",
       "reopen": "إعادة فتح",
       "expandSubsessions": "توسيع المحادثات الفرعية",
-      "collapseSubsessions": "طي المحادثات الفرعية"
+      "collapseSubsessions": "طي المحادثات الفرعية",
+      "moveToParent": "النقل تحت…",
+      "moveToTopLevel": "النقل إلى المستوى الأعلى",
+      "noOtherConversations": "لا توجد محادثة أخرى للتداخل",
+      "parentCrumbLabel": "تحت: "
     },
     "search": {
       "dialogTitle": "بحث",

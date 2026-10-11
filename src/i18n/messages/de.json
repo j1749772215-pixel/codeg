@@ -2115,7 +2115,11 @@
       "markCompleted": "Als abgeschlossen markieren",
       "reopen": "Erneut öffnen",
       "expandSubsessions": "Unterkonversationen einblenden",
-      "collapseSubsessions": "Unterkonversationen ausblenden"
+      "collapseSubsessions": "Unterkonversationen ausblenden",
+      "moveToParent": "Unterordnen…",
+      "moveToTopLevel": "Auf oberste Ebene verschieben",
+      "noOtherConversations": "Keine andere Konversation zum Unterordnen",
+      "parentCrumbLabel": "Untergeordnet unter: "
     },
     "search": {
       "dialogTitle": "Suchen",
