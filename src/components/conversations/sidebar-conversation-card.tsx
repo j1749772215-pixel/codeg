@@ -25,6 +25,7 @@ import {
   FolderX,
   Info,
   ChevronRight,
+  Package,
 } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { useImeGuard } from "@/hooks/use-ime-guard"
@@ -233,6 +234,8 @@ interface SidebarConversationCardProps {
     parentFolderId: number,
     agentType: AgentType
   ) => void
+  /** "压缩为交接": hand this conversation to devin-context-guard. */
+  onCompress?: (conversationId: number) => void
   /** Delegation-tree nesting depth (0 = root). Drives the per-level indent. */
   depth?: number
   /** True when `child_count > 0`: the conversation has delegation children, so
@@ -274,6 +277,7 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
   onMoveToParent,
   childAgentTypes,
   onNewChild,
+  onCompress,
   depth = 0,
   hasChildren = false,
   expanded = false,
@@ -972,7 +976,18 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
                 </ContextMenuSubContent>
               </ContextMenuSub>
             )}
+            {/* Hand the whole conversation to devin-context-guard: the backend
+                exports a Claude-format transcript and the guard's own picker
+                UI takes over. Same gating as onNewChild — callers that omit
+                the callback (Recent mirror) don't show the item. */}
+            {onCompress ? (
+              <ContextMenuItem onSelect={() => onCompress(conversation.id)}>
+                <Package className="h-4 w-4" />
+                {t("compress")}
+              </ContextMenuItem>
+            ) : null}
             {(onNewChild && childAgentTypes) ||
+            onCompress ||
             (onMoveToParent && nestableParents) ? (
               <ContextMenuSeparator />
             ) : null}

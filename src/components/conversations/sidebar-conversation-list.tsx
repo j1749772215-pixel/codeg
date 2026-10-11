@@ -60,6 +60,7 @@ import {
   updateConversationPinned,
   setConversationParent,
   createChildConversation,
+  compressConversation,
   updateFolderColor,
   updateFolderAlias,
   updateFolderDefaultAgent,
@@ -2184,6 +2185,22 @@ export function SidebarConversationList({
     [ensureChildrenLoaded, openConversations, openTab, refreshConversations]
   )
 
+  // Right-click "压缩为交接": the backend exports the conversation as a
+  // Claude-format transcript and hands it to devin-context-guard, whose own
+  // picker window takes over from there — nothing else to do here.
+  const handleCompress = useCallback(
+    async (conversationId: number) => {
+      try {
+        await compressConversation(conversationId)
+        toast.success(t("toasts.compressSent"))
+      } catch (err) {
+        const msg = toErrorMessage(err)
+        toast.error(t("toasts.compressFailed", { message: msg }))
+      }
+    },
+    [t]
+  )
+
   // Candidates for the "Move under…" submenu: EVERY top-level conversation, in
   // every folder — not just the row's own folder.
   //
@@ -3215,6 +3232,7 @@ export function SidebarConversationList({
         onMoveToParent={row.recent ? undefined : handleMoveToParent}
         childAgentTypes={row.recent ? undefined : availableAgents}
         onNewChild={row.recent ? undefined : handleNewChild}
+        onCompress={row.recent ? undefined : handleCompress}
         depth={row.depth}
         hasChildren={conv.child_count > 0}
         expanded={conversationExpanded.has(conv.id)}

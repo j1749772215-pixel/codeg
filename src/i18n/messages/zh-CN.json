@@ -1920,6 +1920,8 @@
         "openFolderFailed": "打开文件夹失败",
         "removeFolderFailed": "移除文件夹失败：{message}",
         "changeFolderColorFailed": "修改颜色失败：{message}",
+        "compressSent": "已交给上下文守卫生成交接",
+        "compressFailed": "压缩失败:{message}",
         "setFolderAliasFailed": "设置别名失败：{message}",
         "changeFolderDefaultAgentFailed": "设置默认智能体失败：{message}",
         "createGroupFailed": "创建分组失败：{message}",
@@ -2137,7 +2139,8 @@
       "noOtherConversations": "没有其它会话可作上级",
       "parentCrumbLabel": "上级：",
       "newChild": "新建子会话",
-      "newChildNoAgents": "没有可用的智能体"
+      "newChildNoAgents": "没有可用的智能体",
+      "compress": "压缩为交接"
     },
     "search": {
       "dialogTitle": "搜索",

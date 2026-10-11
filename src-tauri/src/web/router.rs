@@ -279,6 +279,10 @@ pub fn build_router(
             post(handlers::conversations::create_child_conversation),
         )
         .route(
+            "/compress_conversation",
+            post(handlers::conversations::compress_conversation),
+        )
+        .route(
             "/delete_conversation",
             post(handlers::conversations::delete_conversation),
         )

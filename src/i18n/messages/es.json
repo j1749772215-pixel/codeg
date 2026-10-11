@@ -1920,6 +1920,8 @@
         "openFolderFailed": "Error al abrir carpeta",
         "removeFolderFailed": "Error al eliminar carpeta: {message}",
         "changeFolderColorFailed": "Error al cambiar el color: {message}",
+        "compressSent": "Enviado al guardia de contexto para el traspaso",
+        "compressFailed": "Error al comprimir: {message}",
         "setFolderAliasFailed": "Error al establecer el alias: {message}",
         "changeFolderDefaultAgentFailed": "Error al establecer agente predeterminado: {message}",
         "createGroupFailed": "Error al crear el grupo: {message}",
@@ -2137,7 +2139,8 @@
       "noOtherConversations": "No hay otra conversación donde anidar",
       "parentCrumbLabel": "Depende de: ",
       "newChild": "Nueva conversación hija",
-      "newChildNoAgents": "No hay agentes disponibles"
+      "newChildNoAgents": "No hay agentes disponibles",
+      "compress": "Comprimir a traspaso"
     },
     "search": {
       "dialogTitle": "Buscar",

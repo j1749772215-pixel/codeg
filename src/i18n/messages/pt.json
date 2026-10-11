@@ -1920,6 +1920,8 @@
         "openFolderFailed": "Falha ao abrir pasta",
         "removeFolderFailed": "Falha ao remover pasta: {message}",
         "changeFolderColorFailed": "Falha ao alterar a cor: {message}",
+        "compressSent": "Enviado ao guarda de contexto para a transferência",
+        "compressFailed": "Falha ao comprimir: {message}",
         "setFolderAliasFailed": "Falha ao definir o alias: {message}",
         "changeFolderDefaultAgentFailed": "Falha ao definir agente padrão: {message}",
         "createGroupFailed": "Falha ao criar o grupo: {message}",
@@ -2137,7 +2139,8 @@
       "noOtherConversations": "Nenhuma outra conversa para aninhar",
       "parentCrumbLabel": "Sob: ",
       "newChild": "Nova subconversa",
-      "newChildNoAgents": "Nenhum agente disponível"
+      "newChildNoAgents": "Nenhum agente disponível",
+      "compress": "Comprimir para transferência"
     },
     "search": {
       "dialogTitle": "Buscar",

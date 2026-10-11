@@ -2762,6 +2762,168 @@ pub async fn get_conversation_parent(
     get_conversation_parent_core(&db.conn, conversation_id).await
 }
 
+/// Core for right-click "压缩为交接": export the conversation's parsed turns as
+/// a Claude-format JSONL in %TEMP%, then hand the file to devin-context-guard
+/// (`--pick`), whose own picker UI finishes the handover. The guard/python
+/// paths are machine-local; CODEG_GUARD_PYTHON / CODEG_GUARD_SCRIPT override
+/// them. Returns the exported transcript path.
+pub async fn compress_conversation_core(
+    conn: &sea_orm::DatabaseConnection,
+    conversation_id: i32,
+) -> Result<String, AppCommandError> {
+    let conv = conversation_service::get_by_id(conn, conversation_id)
+        .await
+        .map_err(|_| AppCommandError::not_found("Conversation not found"))?;
+    let external_id = conv.external_id.clone().ok_or_else(|| {
+        AppCommandError::invalid_input("会话还没有可压缩的内容")
+            .with_detail(format!("conversation_id={conversation_id}: external_id is empty"))
+    })?;
+    let agent_type = conv.agent_type;
+    let detail = tokio::task::spawn_blocking(move || {
+        build_agent_parser(agent_type).get_conversation(&external_id)
+    })
+    .await
+    .map_err(|e| {
+        AppCommandError::task_execution_failed("Failed to load conversation")
+            .with_detail(e.to_string())
+    })?
+    .map_err(|e| {
+        AppCommandError::task_execution_failed("Failed to parse conversation")
+            .with_detail(e.to_string())
+    })?;
+    let path = write_handover_transcript(&conv, &detail)?;
+    spawn_context_guard(&path)?;
+    Ok(path.display().to_string())
+}
+
+#[cfg(feature = "tauri-runtime")]
+#[cfg_attr(feature = "tauri-runtime", tauri::command)]
+pub async fn compress_conversation(
+    db: tauri::State<'_, AppDatabase>,
+    conversation_id: i32,
+) -> Result<String, AppCommandError> {
+    compress_conversation_core(&db.conn, conversation_id).await
+}
+
+/// Serialize parsed turns to the Claude-Code JSONL shape devin-handover.py's
+/// `--claude` chain consumes: `{type: user|assistant, cwd, timestamp,
+/// message: {role, content: [text|thinking|tool_use|tool_result blocks]}}`,
+/// with an optional leading `custom-title` line.
+fn write_handover_transcript(
+    conv: &DbConversationSummary,
+    detail: &ConversationDetail,
+) -> Result<std::path::PathBuf, AppCommandError> {
+    let mut lines: Vec<String> = Vec::new();
+    if let Some(title) = conv.title.as_deref().filter(|t| !t.is_empty()) {
+        lines.push(
+            serde_json::json!({ "type": "custom-title", "customTitle": title }).to_string(),
+        );
+    }
+    let mut any = false;
+    for turn in &detail.turns {
+        let role = match turn.role {
+            TurnRole::User => "user",
+            TurnRole::Assistant => "assistant",
+            TurnRole::System => continue,
+        };
+        let mut content: Vec<serde_json::Value> = Vec::new();
+        let mut tool_results: Vec<serde_json::Value> = Vec::new();
+        for block in &turn.blocks {
+            match block {
+                ContentBlock::Text { text } => {
+                    content.push(serde_json::json!({ "type": "text", "text": text }))
+                }
+                ContentBlock::Thinking { text } => {
+                    content.push(serde_json::json!({ "type": "thinking", "thinking": text }))
+                }
+                ContentBlock::ToolUse {
+                    tool_use_id,
+                    tool_name,
+                    input_preview,
+                    ..
+                } => content.push(serde_json::json!({
+                    "type": "tool_use",
+                    "id": tool_use_id,
+                    "name": tool_name,
+                    "input": input_preview.as_deref().unwrap_or(""),
+                })),
+                ContentBlock::ToolResult {
+                    tool_use_id,
+                    output_preview,
+                    ..
+                } => tool_results.push(serde_json::json!({
+                    "type": "tool_result",
+                    "tool_use_id": tool_use_id,
+                    "content": output_preview.as_deref().unwrap_or(""),
+                })),
+                _ => {}
+            }
+        }
+        // tool_result rides on a `user` line in the Claude format; the handover
+        // parser folds it into role=tool (counted, not kept verbatim).
+        if !tool_results.is_empty() {
+            lines.push(
+                serde_json::json!({
+                    "type": "user",
+                    "cwd": conv.origin_cwd,
+                    "timestamp": turn.timestamp.to_rfc3339(),
+                    "message": {"role": "user", "content": tool_results},
+                })
+                .to_string(),
+            );
+            any = true;
+        }
+        if content.is_empty() {
+            continue;
+        }
+        lines.push(
+            serde_json::json!({
+                "type": role,
+                "cwd": conv.origin_cwd,
+                "timestamp": turn.timestamp.to_rfc3339(),
+                "message": {"role": role, "content": content},
+            })
+            .to_string(),
+        );
+        any = true;
+    }
+    if !any {
+        return Err(AppCommandError::invalid_input("会话还没有可压缩的内容")
+            .with_detail(format!("conversation_id={}: no exportable turns", conv.id)));
+    }
+    let dir = std::env::temp_dir().join("codeg-handover");
+    std::fs::create_dir_all(&dir).map_err(AppCommandError::io)?;
+    let path = dir.join(format!(
+        "codeg-conv-{}-{}.jsonl",
+        conv.id,
+        chrono::Utc::now().timestamp()
+    ));
+    std::fs::write(&path, lines.join("\n") + "\n").map_err(AppCommandError::io)?;
+    Ok(path)
+}
+
+/// `pythonw devin-context-guard.py --pick <file>`: the running guard picks up
+/// the request file and opens its picker; when none is running a new instance
+/// starts and consumes the request itself.
+fn spawn_context_guard(transcript: &std::path::Path) -> Result<(), AppCommandError> {
+    let python = std::env::var("CODEG_GUARD_PYTHON")
+        .unwrap_or_else(|_| r"D:\Dev\Tools\Python312\pythonw.exe".to_string());
+    let script = std::env::var("CODEG_GUARD_SCRIPT")
+        .unwrap_or_else(|_| r"D:\Code\scripts\devin-context-guard.py".to_string());
+    let mut cmd = std::process::Command::new(&python);
+    cmd.arg(&script).arg("--pick").arg(transcript);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd.spawn().map_err(|e| {
+        AppCommandError::external_command("启动上下文守卫失败", e.to_string())
+    })?;
+    Ok(())
+}
+
 pub async fn delete_conversation_core(
     conn: &sea_orm::DatabaseConnection,
     conversation_id: i32,

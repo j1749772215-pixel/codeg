@@ -1920,6 +1920,8 @@
         "openFolderFailed": "Failed to open folder",
         "removeFolderFailed": "Failed to remove folder: {message}",
         "changeFolderColorFailed": "Failed to change folder color: {message}",
+        "compressSent": "Handed to the context guard for handover",
+        "compressFailed": "Compress failed: {message}",
         "setFolderAliasFailed": "Failed to set alias: {message}",
         "changeFolderDefaultAgentFailed": "Failed to set default agent: {message}",
         "createGroupFailed": "Failed to create group: {message}",
@@ -2137,7 +2139,8 @@
       "noOtherConversations": "No other conversation to nest under",
       "parentCrumbLabel": "Under: ",
       "newChild": "New child conversation",
-      "newChildNoAgents": "No agents available"
+      "newChildNoAgents": "No agents available",
+      "compress": "Compress to handover"
     },
     "search": {
       "dialogTitle": "Search",

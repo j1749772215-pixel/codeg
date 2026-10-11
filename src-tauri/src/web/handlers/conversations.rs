@@ -433,6 +433,24 @@ pub async fn create_child_conversation(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CompressConversationParams {
+    pub conversation_id: i32,
+}
+
+pub async fn compress_conversation(
+    Extension(state): Extension<Arc<AppState>>,
+    Json(params): Json<CompressConversationParams>,
+) -> Result<Json<String>, AppCommandError> {
+    let path = conv_commands::compress_conversation_core(
+        &state.db.conn,
+        params.conversation_id,
+    )
+    .await?;
+    Ok(Json(path))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GetConversationParentParams {
     pub conversation_id: i32,
 }

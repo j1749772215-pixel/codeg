@@ -1920,6 +1920,8 @@
         "openFolderFailed": "فشل فتح المجلد",
         "removeFolderFailed": "فشل إزالة المجلد: {message}",
         "changeFolderColorFailed": "فشل تغيير اللون: {message}",
+        "compressSent": "تم التسليم إلى حارس السياق لإنشاء التسليم",
+        "compressFailed": "فشل الضغط: {message}",
         "setFolderAliasFailed": "فشل تعيين الاسم المستعار: {message}",
         "changeFolderDefaultAgentFailed": "فشل تعيين الوكيل الافتراضي: {message}",
         "createGroupFailed": "فشل إنشاء المجموعة: {message}",
@@ -2137,7 +2139,8 @@
       "noOtherConversations": "لا توجد محادثة أخرى للتداخل",
       "parentCrumbLabel": "تحت: ",
       "newChild": "محادثة فرعية جديدة",
-      "newChildNoAgents": "لا تتوفر عملاء"
+      "newChildNoAgents": "لا تتوفر عملاء",
+      "compress": "ضغط إلى ملف تسليم"
     },
     "search": {
       "dialogTitle": "بحث",

@@ -1690,6 +1690,7 @@ mod tauri_app {
                 conversations::set_conversation_parent,
                 conversations::get_conversation_parent,
                 conversations::create_child_conversation,
+                conversations::compress_conversation,
                 conversation_tags::list_conversation_tags,
                 conversation_tags::create_conversation_tag,
                 conversation_tags::update_conversation_tag,

@@ -3518,6 +3518,17 @@ export async function createChildConversation(
   })
 }
 
+/**
+ * Right-click "压缩为交接": the backend exports the conversation's turns as a
+ * Claude-format JSONL and hands it to devin-context-guard (`--pick`), which
+ * opens its own picker UI to finish the handover. Returns the transcript path.
+ */
+export async function compressConversation(
+  conversationId: number
+): Promise<string> {
+  return getTransport().call("compress_conversation", { conversationId })
+}
+
 export async function createChatConversation(
   agentType: AgentType,
   title?: string,

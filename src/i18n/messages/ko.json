@@ -1920,6 +1920,8 @@
         "openFolderFailed": "폴더를 열 수 없습니다",
         "removeFolderFailed": "폴더 제거 실패: {message}",
         "changeFolderColorFailed": "색상 변경 실패: {message}",
+        "compressSent": "컨텍스트 가드에 인수인계 생성을 맡겼습니다",
+        "compressFailed": "압축 실패: {message}",
         "setFolderAliasFailed": "별칭 설정 실패: {message}",
         "changeFolderDefaultAgentFailed": "기본 에이전트 설정 실패: {message}",
         "createGroupFailed": "그룹 생성 실패: {message}",
@@ -2137,7 +2139,8 @@
       "noOtherConversations": "상위로 지정할 대화가 없습니다",
       "parentCrumbLabel": "상위: ",
       "newChild": "하위 대화 만들기",
-      "newChildNoAgents": "사용 가능한 에이전트가 없습니다"
+      "newChildNoAgents": "사용 가능한 에이전트가 없습니다",
+      "compress": "인수인계로 압축"
     },
     "search": {
       "dialogTitle": "검색",

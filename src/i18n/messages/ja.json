@@ -1920,6 +1920,8 @@
         "openFolderFailed": "フォルダを開けませんでした",
         "removeFolderFailed": "フォルダの削除に失敗しました: {message}",
         "changeFolderColorFailed": "色の変更に失敗しました: {message}",
+        "compressSent": "コンテキストガードに引き継ぎ生成を依頼しました",
+        "compressFailed": "圧縮に失敗しました:{message}",
         "setFolderAliasFailed": "エイリアスの設定に失敗しました: {message}",
         "changeFolderDefaultAgentFailed": "デフォルトエージェントの設定に失敗しました: {message}",
         "createGroupFailed": "グループの作成に失敗しました: {message}",
@@ -2137,7 +2139,8 @@
       "noOtherConversations": "上位にできる会話がありません",
       "parentCrumbLabel": "上位: ",
       "newChild": "子会話を作成",
-      "newChildNoAgents": "利用可能なエージェントがありません"
+      "newChildNoAgents": "利用可能なエージェントがありません",
+      "compress": "引き継ぎ用に圧縮"
     },
     "search": {
       "dialogTitle": "検索",
